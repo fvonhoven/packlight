@@ -22,7 +22,8 @@
       "extends": "base",
       "distribution": "internal",
       "channel": "preview",
-      "environment": "preview"
+      "environment": "preview",
+      "autoIncrement": true
     },
     "preview-simulator": {
       "extends": "preview",

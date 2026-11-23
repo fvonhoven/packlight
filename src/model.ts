@@ -54,20 +54,50 @@ export function cloneList(list: PackingList): PackingList {
   return newList(`${list.title} (copy)`, list.items.map((item) => newItem(item.text)));
 }
 
-/** Text-based sharing works in Messages, Mail, WhatsApp, etc. No server needed. */
+export const IMPORT_LINK_PREFIX = 'packlight://import';
+
+/** A link that opens Packlight and offers to add the list. Items arrive unpacked. */
+export function buildImportLink(list: PackingList): string {
+  const items = list.items.slice(0, 150).map((item) => item.text.replace(/\n/g, ' ')).join('\n');
+  return `${IMPORT_LINK_PREFIX}?t=${encodeURIComponent(list.title)}&i=${encodeURIComponent(items)}`;
+}
+
+/** Reads a packlight://import link (on its own or inside a pasted message). */
+export function parseImportLink(input: string): PackingList | null {
+  const match = input.match(/packlight:\/\/import\?(\S+)/i);
+  if (!match) return null;
+  const params: Record<string, string> = {};
+  for (const pair of match[1].split('&')) {
+    const [key, ...rest] = pair.split('=');
+    try {
+      params[key] = decodeURIComponent(rest.join('=').replace(/\+/g, ' '));
+    } catch {
+      return null;
+    }
+  }
+  const items = (params.i ?? '').split('\n').map((text) => text.trim()).filter(Boolean).slice(0, 150);
+  if (items.length === 0) return null;
+  const title = (params.t ?? '').trim().slice(0, 60) || 'Shared list';
+  return newList(title, items.map((text) => newItem(text)));
+}
+
+/** Readable in any messaging app, plus a link that opens straight into Packlight. */
 export function formatListForShare(list: PackingList): string {
   const rows = list.items.map((item) => `${item.packed ? '☑' : '☐'} ${item.text}`);
   return [
-    `PACKING LIST: ${list.title}`,
+    `Packing list: ${list.title}`,
     '',
     ...(rows.length > 0 ? rows : ['(No items yet)']),
     '',
-    'Sent from Packlight. To save a copy, paste this message into Packlight → Import.',
+    'Open it in Packlight:',
+    buildImportLink(list),
   ].join('\n');
 }
 
 /** Accepts Packlight shares, markdown checklists, and regular pasted line lists. */
 export function parseSharedList(input: string): PackingList | null {
+  const fromLink = parseImportLink(input);
+  if (fromLink) return fromLink;
   const lines = input.replace(/\r\n?/g, '\n').split('\n').map((line) => line.trim());
   let title = 'Imported list';
   const items: PackingItem[] = [];
@@ -80,7 +110,7 @@ export function parseSharedList(input: string): PackingList | null {
       title = titleMatch[1].trim() || title;
       continue;
     }
-    if (/^sent from packlight\b/i.test(line) || /^\(no items yet\)$/i.test(line)) {
+    if (/^sent from packlight\b/i.test(line) || /^open it in packlight:?$/i.test(line) || /^\(no items yet\)$/i.test(line)) {
       continue;
     }
 

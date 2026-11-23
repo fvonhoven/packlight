@@ -19,6 +19,11 @@ import {
   type TextInputInstance,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Clipboard from 'expo-clipboard';
+import * as Haptics from 'expo-haptics';
+import * as Linking from 'expo-linking';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import {
@@ -27,6 +32,7 @@ import {
   formatListForShare,
   newItem,
   newList,
+  parseImportLink,
   parseSharedList,
   readStoredLists,
   starterList,
@@ -120,62 +126,62 @@ function ItemRow({
   last: boolean;
   pop: boolean;
   onToggle: () => void;
-  onRemove: () => void;
+  onRemove: (close: () => void) => void;
 }) {
   // Rows remount when they move between sections, so the pop plays on mount.
   const scale = useRef(new Animated.Value(pop ? 0.4 : 1)).current;
+  const swipeRef = useRef<SwipeableMethods>(null);
   useEffect(() => {
     if (pop) Animated.spring(scale, { toValue: 1, friction: 4, tension: 220, useNativeDriver: true }).start();
   }, [pop, scale]);
+  const close = () => swipeRef.current?.close();
   return (
-    <View style={[styles.itemRow, !last && styles.rowDivider]}>
-      <Pressable
-        onPress={onToggle}
-        hitSlop={{ top: 10, bottom: 10, left: 12, right: 10 }}
-        style={({ pressed }) => [styles.boxHit, pressed && styles.pressed]}
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked: packed }}
-        accessibilityLabel={text}
-        accessibilityActions={[{ name: 'remove', label: 'Remove' }]}
-        onAccessibilityAction={(e) => { if (e.nativeEvent.actionName === 'remove') onRemove(); }}
-      >
-        <Animated.View style={[styles.box, packed && styles.boxPacked, { transform: [{ scale }] }]}>
-          {packed && <Text style={styles.boxCheck}>✓</Text>}
-        </Animated.View>
-      </Pressable>
-      <Pressable
-        style={styles.itemTextWrap}
-        onLongPress={onRemove}
-        delayLongPress={450}
-        importantForAccessibility="no-hide-descendants"
-        accessibilityElementsHidden
-      >
-        {({ pressed }) => (
-          <Text numberOfLines={3} style={[styles.itemText, packed && styles.itemTextPacked, pressed && styles.itemTextHeld]}>{text}</Text>
-        )}
-      </Pressable>
-    </View>
+    <ReanimatedSwipeable
+      ref={swipeRef}
+      friction={1.6}
+      rightThreshold={56}
+      overshootRight={false}
+      onSwipeableWillOpen={feel.swipe}
+      renderRightActions={() => (
+        <Pressable
+          onPress={() => onRemove(close)}
+          style={styles.swipeRemove}
+          accessibilityRole="button"
+          accessibilityLabel={`Remove ${text}`}
+        >
+          <Text style={styles.swipeRemoveText}>Remove</Text>
+        </Pressable>
+      )}
+    >
+      <View style={[styles.itemRow, !last && styles.rowDivider]}>
+        <Pressable
+          onPress={onToggle}
+          hitSlop={{ top: 10, bottom: 10, left: 12, right: 10 }}
+          style={({ pressed }) => [styles.boxHit, pressed && styles.pressed]}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: packed }}
+          accessibilityLabel={text}
+          accessibilityActions={[{ name: 'remove', label: 'Remove' }]}
+          onAccessibilityAction={(e) => { if (e.nativeEvent.actionName === 'remove') onRemove(close); }}
+        >
+          <Animated.View style={[styles.box, packed && styles.boxPacked, { transform: [{ scale }] }]}>
+            {packed && <Text style={styles.boxCheck}>✓</Text>}
+          </Animated.View>
+        </Pressable>
+        <Text numberOfLines={3} style={[styles.itemText, packed && styles.itemTextPacked]}>{text}</Text>
+      </View>
+    </ReanimatedSwipeable>
   );
 }
 
-type Toast = { message: string; undo: () => void } | null;
-
-function UndoBar({ toast, onUndo }: { toast: NonNullable<Toast>; onUndo: () => void }) {
-  const rise = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    rise.setValue(0);
-    Animated.timing(rise, { toValue: 1, duration: 180, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
-  }, [rise, toast]);
-  const translateY = rise.interpolate({ inputRange: [0, 1], outputRange: [24, 0] });
-  return (
-    <Animated.View style={[styles.toast, { opacity: rise, transform: [{ translateY }] }]} accessibilityLiveRegion="polite">
-      <Text style={styles.toastText} numberOfLines={1}>{toast.message}</Text>
-      <Pressable onPress={onUndo} hitSlop={12} accessibilityRole="button">
-        <Text style={styles.toastAction}>Undo</Text>
-      </Pressable>
-    </Animated.View>
-  );
-}
+const feel = {
+  pack: () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {}); },
+  unpack: () => { Haptics.selectionAsync().catch(() => {}); },
+  done: () => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}); },
+  swipe: () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); },
+  warn: () => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {}); },
+  tick: () => { Haptics.selectionAsync().catch(() => {}); },
+};
 
 const moveAnimation = () => LayoutAnimation.configureNext(
   LayoutAnimation.create(240, LayoutAnimation.Types.easeInEaseOut, LayoutAnimation.Properties.opacity),
@@ -190,15 +196,6 @@ function PackingApp() {
   const [dialogText, setDialogText] = useState('');
   const [itemText, setItemText] = useState('');
   const [popId, setPopId] = useState<string | null>(null);
-  const [toast, setToast] = useState<Toast>(null);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const showToast = (next: NonNullable<Toast>) => {
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    setToast(next);
-    toastTimer.current = setTimeout(() => setToast(null), 5000);
-  };
-  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
   const saves = useRef<Promise<unknown>>(Promise.resolve());
   const addInputRef = useRef<TextInputInstance>(null);
 
@@ -246,6 +243,27 @@ function PackingApp() {
 
   const selectedList = lists.find((list) => list.id === selectedId) ?? null;
 
+  const incomingUrl = Linking.useURL();
+  const handledUrl = useRef<string | null>(null);
+  useEffect(() => {
+    if (!hydrated || !incomingUrl || handledUrl.current === incomingUrl) return;
+    handledUrl.current = incomingUrl;
+    const shared = parseImportLink(incomingUrl);
+    if (!shared) return;
+    const count = shared.items.length;
+    Alert.alert(`Add "${shared.title}"?`, `A shared packing list with ${count === 1 ? '1 item' : `${count} items`}.`, [
+      { text: 'Not now', style: 'cancel' },
+      {
+        text: 'Add list',
+        onPress: () => {
+          feel.done();
+          setLists((current) => [shared, ...current]);
+          setSelectedId(shared.id);
+        },
+      },
+    ]);
+  }, [hydrated, incomingUrl]);
+
   const editList = (id: string, updater: (list: PackingList) => PackingList) => {
     setLists((current) => current.map((list) => list.id === id
       ? { ...updater(list), updatedAt: Date.now() }
@@ -285,6 +303,7 @@ function PackingApp() {
   const addItem = () => {
     const text = itemText.trim();
     if (!text || !selectedId) return;
+    feel.tick();
     moveAnimation();
     editList(selectedId, (list) => ({ ...list, items: [...list.items, newItem(text)] }));
     setItemText('');
@@ -294,7 +313,7 @@ function PackingApp() {
   const shareList = async (list: PackingList) => {
     try {
       await Share.share({
-        title: `Packing list: ${list.title}`,
+        title: list.title,
         message: formatListForShare(list),
       });
     } catch {
@@ -337,7 +356,7 @@ function PackingApp() {
     ]);
   };
 
-  const goHome = () => { setSelectedId(null); setItemText(''); setToast(null); };
+  const goHome = () => { setSelectedId(null); setItemText(''); };
 
   if (!hydrated) {
     return (
@@ -353,31 +372,30 @@ function PackingApp() {
   const total = selectedList?.items.length ?? 0;
 
   const toggle = (listId: string, itemId: string, value: boolean) => {
+    const list = lists.find((entry) => entry.id === listId);
+    const finishes = !!list && value && list.items.every((item) => item.packed || item.id === itemId);
+    if (finishes) feel.done(); else if (value) feel.pack(); else feel.unpack();
     moveAnimation();
     setPopId(value ? itemId : null);
     editList(listId, (list) => ({
       ...list, items: list.items.map((current) => current.id === itemId ? { ...current, packed: value } : current),
     }));
   };
-  const remove = (listId: string, itemId: string) => {
-    const list = lists.find((entry) => entry.id === listId);
-    const index = list?.items.findIndex((current) => current.id === itemId) ?? -1;
-    if (!list || index < 0) return;
-    const removed = list.items[index];
-    moveAnimation();
-    editList(listId, (current) => ({ ...current, items: current.items.filter((entry) => entry.id !== itemId) }));
-    showToast({
-      message: `Removed ${removed.text}`,
-      undo: () => {
-        moveAnimation();
-        editList(listId, (current) => {
-          if (current.items.some((entry) => entry.id === removed.id)) return current;
-          const items = [...current.items];
-          items.splice(Math.min(index, items.length), 0, removed);
-          return { ...current, items };
-        });
+  const remove = (listId: string, itemId: string, close: () => void) => {
+    const item = lists.find((entry) => entry.id === listId)?.items.find((current) => current.id === itemId);
+    if (!item) return;
+    feel.warn();
+    Alert.alert(`Remove "${item.text}"?`, 'It comes off this list.', [
+      { text: 'Cancel', style: 'cancel', onPress: close },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: () => {
+          moveAnimation();
+          editList(listId, (current) => ({ ...current, items: current.items.filter((entry) => entry.id !== itemId) }));
+        },
       },
-    });
+    ], { cancelable: true, onDismiss: close });
   };
 
   return (
@@ -473,7 +491,7 @@ function PackingApp() {
                     pop={false}
                     last={i === pending.length - 1}
                     onToggle={() => toggle(selectedList.id, item.id, true)}
-                    onRemove={() => remove(selectedList.id, item.id)}
+                    onRemove={(close) => remove(selectedList.id, item.id, close)}
                   />
                 ))}
               </View>
@@ -491,22 +509,16 @@ function PackingApp() {
                       pop={item.id === popId}
                       last={i === finished.length - 1}
                       onToggle={() => toggle(selectedList.id, item.id, false)}
-                      onRemove={() => remove(selectedList.id, item.id)}
+                      onRemove={(close) => remove(selectedList.id, item.id, close)}
                     />
                   ))}
                 </View>
               </>
             )}
-            {total > 0 && <Text style={styles.hint}>Tap a box to pack it. Hold an item to remove it.</Text>}
+            {total > 0 && <Text style={styles.hint}>Tap a box to pack it. Swipe an item left to remove it.</Text>}
             {saveIssue && <Text style={styles.saveIssue}>Changes aren't saving on this device. Free up storage and reopen the app.</Text>}
           </ScrollView>
 
-          {toast && (
-            <UndoBar
-              toast={toast}
-              onUndo={() => { toast.undo(); setToast(null); }}
-            />
-          )}
           <View style={styles.addBar}>
             <TextInput
               ref={addInputRef}
@@ -545,9 +557,23 @@ function PackingApp() {
               </Text>
               <Text style={styles.modalCaption}>
                 {dialog?.kind === 'import'
-                  ? 'Paste a list shared from Packlight, or any list with one item per line.'
+                  ? 'Paste a message shared from Packlight, or any list with one item per line.'
                   : 'Name it after the trip.'}
               </Text>
+              {dialog?.kind === 'import' && (
+                <Pressable
+                  onPress={async () => {
+                    const pasted = await Clipboard.getStringAsync().catch(() => '');
+                    if (pasted.trim()) { feel.tick(); setDialogText(pasted); }
+                    else Alert.alert('Clipboard is empty', 'Copy the shared message first, then tap Paste.');
+                  }}
+                  style={styles.pasteButton}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.textButton}>Paste from clipboard</Text>
+                </Pressable>
+              )}
               <TextInput
                 autoFocus
                 value={dialogText}
@@ -585,13 +611,16 @@ function PackingApp() {
 
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <PackingApp />
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={styles.gestureRoot}>
+      <SafeAreaProvider>
+        <PackingApp />
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
+  gestureRoot: { flex: 1 },
   safe: { flex: 1, backgroundColor: C.fog },
   loading: { alignItems: 'center', justifyContent: 'center' },
   pressed: { opacity: 0.6 },
@@ -631,23 +660,21 @@ const styles = StyleSheet.create({
   detailStatus: { fontFamily: F.text, fontSize: 15, color: C.slate, marginTop: 10, marginBottom: 22 },
   groupTitle: { fontFamily: F.signMedium, fontSize: 18, color: C.slate, marginBottom: 8 },
 
-  itemRow: { flexDirection: 'row', alignItems: 'center', minHeight: 54 },
+  itemRow: { flexDirection: 'row', alignItems: 'center', minHeight: 54, backgroundColor: C.sheet },
   boxHit: { paddingVertical: 12, paddingRight: 14 },
-  itemTextWrap: { flex: 1, paddingVertical: 14 },
-  itemTextHeld: { opacity: 0.45 },
   box: { width: 28, height: 28, borderRadius: 4, borderWidth: 2, borderColor: C.ink, alignItems: 'center', justifyContent: 'center' },
   boxPacked: { backgroundColor: C.strap, borderColor: C.strap },
   boxCheck: { color: C.ink, fontSize: 15, fontWeight: '800', marginTop: -1 },
-  itemText: { flex: 1, fontFamily: F.text, fontSize: 17, lineHeight: 23, color: C.ink },
+  itemText: { flex: 1, fontFamily: F.text, fontSize: 17, lineHeight: 23, color: C.ink, paddingVertical: 14 },
   itemTextPacked: { color: C.slate, textDecorationLine: 'line-through' },
+  swipeRemove: { backgroundColor: C.danger, justifyContent: 'center', paddingHorizontal: 22 },
+  swipeRemoveText: { fontFamily: F.textMedium, fontSize: 16, color: C.sheet },
+  pasteButton: { alignSelf: 'flex-start', marginBottom: 10, paddingVertical: 6 },
   hint: { fontFamily: F.text, fontSize: 13, color: C.slate, marginTop: 4, marginBottom: 12 },
   titleBlock: { marginTop: 8, marginBottom: 16 },
   detailTitleStamped: { paddingRight: 132 },
   stamp: { position: 'absolute', right: 0, top: 4, borderWidth: 3, borderColor: C.ink, borderRadius: 4, paddingHorizontal: 10, paddingVertical: 2, backgroundColor: C.strap },
   stampText: { fontFamily: F.sign, fontSize: 24, letterSpacing: 2, color: C.ink },
-  toast: { position: 'absolute', left: 20, right: 20, bottom: 82, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.ink, borderRadius: 6, paddingHorizontal: 16, paddingVertical: 14 },
-  toastText: { flex: 1, fontFamily: F.text, fontSize: 15, color: C.sheet, marginRight: 12 },
-  toastAction: { fontFamily: F.textMedium, fontSize: 15, color: C.strap },
   saveIssue: { fontFamily: F.text, fontSize: 14, color: C.danger, marginTop: 4 },
 
   addBar: { flexDirection: 'row', gap: 10, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 12, backgroundColor: C.fog, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.hairline },

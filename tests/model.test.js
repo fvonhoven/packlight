@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
   newItem, newList, starterList, cloneList, countPacked,
   parseSharedList, formatListForShare, readStoredLists,
+  buildImportLink, parseImportLink,
 } = require('./.compiled/model.js');
 
 test('starter checklist has sensible content', () => {
@@ -13,14 +14,44 @@ test('starter checklist has sensible content', () => {
   assert.equal(countPacked(list), 0);
 });
 
-test('shared text round trips and preserves checkmarks', () => {
+test('shared message round trips as a fresh, unpacked copy', () => {
   const original = newList('Paris weekend', [newItem('Passport', true), newItem('Charger'), newItem('Socks')]);
   const copy = parseSharedList(formatListForShare(original));
   assert.ok(copy);
+  assert.notEqual(copy.id, original.id);
   assert.equal(copy.title, 'Paris weekend');
   assert.deepEqual(copy.items.map((i) => [i.text, i.packed]), [
-    ['Passport', true], ['Charger', false], ['Socks', false],
+    ['Passport', false], ['Charger', false], ['Socks', false],
   ]);
+});
+
+test('checkbox text without a link still preserves checkmarks', () => {
+  const copy = parseSharedList('Packing list: Paris\n\n☑ Passport\n☐ Charger');
+  assert.equal(copy.title, 'Paris');
+  assert.deepEqual(copy.items.map((i) => [i.text, i.packed]), [['Passport', true], ['Charger', false]]);
+});
+
+test('import link survives awkward characters', () => {
+  const original = newList('Rock & Roll = fun?', [newItem('Café 50% off #2'), newItem('🧦 socks + more'), newItem('a/b?c=d&e')]);
+  const link = buildImportLink(original);
+  assert.ok(link.startsWith('packlight://import?'));
+  assert.ok(!/\s/.test(link), 'link must not contain whitespace');
+  const copy = parseImportLink(link);
+  assert.equal(copy.title, 'Rock & Roll = fun?');
+  assert.deepEqual(copy.items.map((i) => i.text), ['Café 50% off #2', '🧦 socks + more', 'a/b?c=d&e']);
+});
+
+test('import link found inside a pasted message', () => {
+  const link = buildImportLink(newList('Ski', [newItem('Gloves')]));
+  const copy = parseSharedList(`hey take a look\n${link}\nthanks!`);
+  assert.equal(copy.title, 'Ski');
+  assert.deepEqual(copy.items.map((i) => i.text), ['Gloves']);
+});
+
+test('broken or empty import links are rejected', () => {
+  assert.equal(parseImportLink('packlight://import?t=Trip&i='), null);
+  assert.equal(parseImportLink('packlight://import?t=%E0%A4%A&i=%E0%A4%A'), null);
+  assert.equal(parseImportLink('https://example.com'), null);
 });
 
 test('plain text list imports', () => {
