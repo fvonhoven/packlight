@@ -2,9 +2,9 @@
 # native fingerprint), otherwise a new installable preview build.
 # This is how "update Packlight and send it to my iPhone" decides update vs rebuild.
 name: Ship to my iPhone (preview)
+# Push trigger paused until iOS signing credentials exist (each failed build is billed).
+# Re-enable by restoring:  push: { branches: ['main'] }
 on:
-  push:
-    branches: ['main']
   workflow_dispatch: {}
 jobs:
   fingerprint:
