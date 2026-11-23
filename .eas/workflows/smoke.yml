@@ -1,11 +1,15 @@
-# Diagnostic: proves Expo Workflows can start a job and check out this repo.
+# Diagnostic: proves Expo Workflows can start a job, check out this repo, and
+# surfaces the real EAS CLI error when built-in build jobs fail to start.
 name: Smoke test
 on:
   workflow_dispatch: {}
 jobs:
   smoke:
-    name: Checkout and hello
+    name: Checkout and EAS CLI diagnostics
     type: custom
     steps:
       - uses: eas/checkout
-      - run: ls && node -v && cat app.json
+      - uses: eas/install_node_modules
+      - run: npx --yes eas-cli@latest whoami || true
+      - run: npx --yes eas-cli@latest config --platform ios --profile preview-simulator --non-interactive || true
+      - run: npx --yes eas-cli@latest build --platform ios --profile preview-simulator --non-interactive --no-wait
