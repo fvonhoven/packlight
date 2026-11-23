@@ -8,13 +8,19 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.fvonhoven.packlight"
+      "bundleIdentifier": "com.fvonhoven.packlight",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.fvonhoven.packlight"
     },
     "experiments": {
       "tsconfigPaths": true
+    },
+    "runtimeVersion": {
+      "policy": "fingerprint"
     }
   }
 }

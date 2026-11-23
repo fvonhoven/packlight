@@ -1,0 +1,14 @@
+# Every pull request: typecheck + unit tests in the cloud. No build minutes spent.
+name: PR checks
+on:
+  pull_request:
+    branches: ['main']
+jobs:
+  checks:
+    name: Typecheck and tests
+    type: custom
+    steps:
+      - uses: eas/checkout
+      - uses: eas/install_node_modules
+      - run: npm run typecheck
+      - run: npm test

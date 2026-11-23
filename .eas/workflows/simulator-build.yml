@@ -1,0 +1,11 @@
+# Manual: unsigned iOS Simulator build for testing in Expo's cloud simulator.
+name: iOS simulator build
+on:
+  workflow_dispatch: {}
+jobs:
+  build_ios_sim:
+    name: iOS simulator build
+    type: build
+    params:
+      platform: ios
+      profile: preview-simulator
