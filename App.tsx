@@ -2,7 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   BackHandler,
+  Easing,
+  LayoutAnimation,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -58,58 +61,125 @@ function niceDate(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-/** The strap: a luggage strap that fills with high-vis yellow as items get packed. */
+/** The strap: a luggage strap that springs forward in high-vis yellow as items get packed. */
 function Strap({ packed, total, thick = false }: { packed: number; total: number; thick?: boolean }) {
-  const fraction = total ? (packed / total) * 100 : 0;
+  const fraction = total ? packed / total : 0;
+  const anim = useRef(new Animated.Value(fraction)).current;
+  useEffect(() => {
+    Animated.spring(anim, { toValue: fraction, friction: 6, tension: 70, useNativeDriver: false }).start();
+  }, [anim, fraction]);
+  const width = anim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
   return (
     <View
       style={[styles.strapTrack, thick && styles.strapTrackThick]}
       accessibilityLabel={`${packed} of ${total} items packed`}
     >
-      <View style={[styles.strapFill, { width: `${fraction}%` as `${number}%` }]} />
+      <Animated.View style={[styles.strapFill, { width }]} />
     </View>
   );
+}
+
+/** Baggage-handler stamp that thumps onto a fully packed list. */
+function PackedStamp() {
+  const drop = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(drop, { toValue: 1, friction: 5, tension: 140, useNativeDriver: true }).start();
+  }, [drop]);
+  const scale = drop.interpolate({ inputRange: [0, 1], outputRange: [2.4, 1] });
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[styles.stamp, { opacity: drop, transform: [{ rotate: '-9deg' }, { scale }] }]}
+      accessibilityLabel="Everything is packed"
+    >
+      <Text style={styles.stampText}>PACKED</Text>
+    </Animated.View>
+  );
+}
+
+function statusLine(packed: number, total: number): string {
+  const remaining = total - packed;
+  if (total === 0) return 'Empty bag. Add the first thing you need.';
+  if (remaining === 0) return 'Everything is in. Zip it up.';
+  if (packed === 0) return `${total} things to pack. Start anywhere.`;
+  if (remaining === 1) return 'One more. Don\'t forget it.';
+  if (packed / total < 0.5) return `${packed} in, ${remaining} to go.`;
+  return `${remaining} left. Nearly there.`;
 }
 
 function ItemRow({
   text,
   packed,
   last,
+  pop,
   onToggle,
-  onDelete,
+  onRemove,
 }: {
   text: string;
   packed: boolean;
   last: boolean;
+  pop: boolean;
   onToggle: () => void;
-  onDelete: () => void;
+  onRemove: () => void;
 }) {
+  // Rows remount when they move between sections, so the pop plays on mount.
+  const scale = useRef(new Animated.Value(pop ? 0.4 : 1)).current;
+  useEffect(() => {
+    if (pop) Animated.spring(scale, { toValue: 1, friction: 4, tension: 220, useNativeDriver: true }).start();
+  }, [pop, scale]);
   return (
     <View style={[styles.itemRow, !last && styles.rowDivider]}>
       <Pressable
-        style={styles.itemMain}
         onPress={onToggle}
+        hitSlop={{ top: 10, bottom: 10, left: 12, right: 10 }}
+        style={({ pressed }) => [styles.boxHit, pressed && styles.pressed]}
         accessibilityRole="checkbox"
         accessibilityState={{ checked: packed }}
         accessibilityLabel={text}
+        accessibilityActions={[{ name: 'remove', label: 'Remove' }]}
+        onAccessibilityAction={(e) => { if (e.nativeEvent.actionName === 'remove') onRemove(); }}
       >
-        <View style={[styles.box, packed && styles.boxPacked]}>
+        <Animated.View style={[styles.box, packed && styles.boxPacked, { transform: [{ scale }] }]}>
           {packed && <Text style={styles.boxCheck}>✓</Text>}
-        </View>
-        <Text numberOfLines={3} style={[styles.itemText, packed && styles.itemTextPacked]}>{text}</Text>
+        </Animated.View>
       </Pressable>
       <Pressable
-        onPress={onDelete}
-        hitSlop={12}
-        style={styles.removeItem}
-        accessibilityRole="button"
-        accessibilityLabel={`Remove ${text}`}
+        style={styles.itemTextWrap}
+        onLongPress={onRemove}
+        delayLongPress={450}
+        importantForAccessibility="no-hide-descendants"
+        accessibilityElementsHidden
       >
-        <Text style={styles.removeItemText}>×</Text>
+        {({ pressed }) => (
+          <Text numberOfLines={3} style={[styles.itemText, packed && styles.itemTextPacked, pressed && styles.itemTextHeld]}>{text}</Text>
+        )}
       </Pressable>
     </View>
   );
 }
+
+type Toast = { message: string; undo: () => void } | null;
+
+function UndoBar({ toast, onUndo }: { toast: NonNullable<Toast>; onUndo: () => void }) {
+  const rise = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    rise.setValue(0);
+    Animated.timing(rise, { toValue: 1, duration: 180, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
+  }, [rise, toast]);
+  const translateY = rise.interpolate({ inputRange: [0, 1], outputRange: [24, 0] });
+  return (
+    <Animated.View style={[styles.toast, { opacity: rise, transform: [{ translateY }] }]} accessibilityLiveRegion="polite">
+      <Text style={styles.toastText} numberOfLines={1}>{toast.message}</Text>
+      <Pressable onPress={onUndo} hitSlop={12} accessibilityRole="button">
+        <Text style={styles.toastAction}>Undo</Text>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+const moveAnimation = () => LayoutAnimation.configureNext(
+  LayoutAnimation.create(240, LayoutAnimation.Types.easeInEaseOut, LayoutAnimation.Properties.opacity),
+);
 
 function PackingApp() {
   const [lists, setLists] = useState<PackingList[]>([]);
@@ -119,6 +189,16 @@ function PackingApp() {
   const [dialog, setDialog] = useState<Dialog>(null);
   const [dialogText, setDialogText] = useState('');
   const [itemText, setItemText] = useState('');
+  const [popId, setPopId] = useState<string | null>(null);
+  const [toast, setToast] = useState<Toast>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = (next: NonNullable<Toast>) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast(next);
+    toastTimer.current = setTimeout(() => setToast(null), 5000);
+  };
+  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
   const saves = useRef<Promise<unknown>>(Promise.resolve());
   const addInputRef = useRef<TextInputInstance>(null);
 
@@ -205,6 +285,7 @@ function PackingApp() {
   const addItem = () => {
     const text = itemText.trim();
     if (!text || !selectedId) return;
+    moveAnimation();
     editList(selectedId, (list) => ({ ...list, items: [...list.items, newItem(text)] }));
     setItemText('');
     addInputRef.current?.focus();
@@ -256,7 +337,7 @@ function PackingApp() {
     ]);
   };
 
-  const goHome = () => { setSelectedId(null); setItemText(''); };
+  const goHome = () => { setSelectedId(null); setItemText(''); setToast(null); };
 
   if (!hydrated) {
     return (
@@ -270,14 +351,34 @@ function PackingApp() {
   const finished = selectedList?.items.filter((item) => item.packed) ?? [];
   const packed = selectedList ? countPacked(selectedList) : 0;
   const total = selectedList?.items.length ?? 0;
-  const left = total - packed;
 
-  const toggle = (listId: string, itemId: string, value: boolean) => editList(listId, (list) => ({
-    ...list, items: list.items.map((current) => current.id === itemId ? { ...current, packed: value } : current),
-  }));
-  const remove = (listId: string, itemId: string) => editList(listId, (list) => ({
-    ...list, items: list.items.filter((current) => current.id !== itemId),
-  }));
+  const toggle = (listId: string, itemId: string, value: boolean) => {
+    moveAnimation();
+    setPopId(value ? itemId : null);
+    editList(listId, (list) => ({
+      ...list, items: list.items.map((current) => current.id === itemId ? { ...current, packed: value } : current),
+    }));
+  };
+  const remove = (listId: string, itemId: string) => {
+    const list = lists.find((entry) => entry.id === listId);
+    const index = list?.items.findIndex((current) => current.id === itemId) ?? -1;
+    if (!list || index < 0) return;
+    const removed = list.items[index];
+    moveAnimation();
+    editList(listId, (current) => ({ ...current, items: current.items.filter((entry) => entry.id !== itemId) }));
+    showToast({
+      message: `Removed ${removed.text}`,
+      undo: () => {
+        moveAnimation();
+        editList(listId, (current) => {
+          if (current.items.some((entry) => entry.id === removed.id)) return current;
+          const items = [...current.items];
+          items.splice(Math.min(index, items.length), 0, removed);
+          return { ...current, items };
+        });
+      },
+    });
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -355,13 +456,12 @@ function PackingApp() {
           </View>
 
           <ScrollView contentContainerStyle={styles.detailScroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-            <Text style={styles.detailTitle} accessibilityRole="header">{selectedList.title}</Text>
+            <View style={styles.titleBlock}>
+              <Text style={[styles.detailTitle, total > 0 && packed === total && styles.detailTitleStamped]} accessibilityRole="header">{selectedList.title}</Text>
+              {total > 0 && packed === total && <PackedStamp />}
+            </View>
             <Strap packed={packed} total={total} thick />
-            <Text style={styles.detailStatus}>
-              {total === 0 ? 'Add the first thing you need to bring.' :
-                left === 0 ? `All ${total} packed. Zip it up.` :
-                `${packed} of ${total} packed, ${left} to go`}
-            </Text>
+            <Text style={styles.detailStatus}>{statusLine(packed, total)}</Text>
 
             {pending.length > 0 && (
               <View style={styles.sheet}>
@@ -370,9 +470,10 @@ function PackingApp() {
                     key={item.id}
                     text={item.text}
                     packed={false}
+                    pop={false}
                     last={i === pending.length - 1}
                     onToggle={() => toggle(selectedList.id, item.id, true)}
-                    onDelete={() => remove(selectedList.id, item.id)}
+                    onRemove={() => remove(selectedList.id, item.id)}
                   />
                 ))}
               </View>
@@ -387,17 +488,25 @@ function PackingApp() {
                       key={item.id}
                       text={item.text}
                       packed
+                      pop={item.id === popId}
                       last={i === finished.length - 1}
                       onToggle={() => toggle(selectedList.id, item.id, false)}
-                      onDelete={() => remove(selectedList.id, item.id)}
+                      onRemove={() => remove(selectedList.id, item.id)}
                     />
                   ))}
                 </View>
               </>
             )}
+            {total > 0 && <Text style={styles.hint}>Tap a box to pack it. Hold an item to remove it.</Text>}
             {saveIssue && <Text style={styles.saveIssue}>Changes aren't saving on this device. Free up storage and reopen the app.</Text>}
           </ScrollView>
 
+          {toast && (
+            <UndoBar
+              toast={toast}
+              onUndo={() => { toast.undo(); setToast(null); }}
+            />
+          )}
           <View style={styles.addBar}>
             <TextInput
               ref={addInputRef}
@@ -518,19 +627,27 @@ const styles = StyleSheet.create({
   detailNav: { height: 52, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   detailNavRight: { flexDirection: 'row', gap: 22 },
   detailScroll: { paddingHorizontal: 20, paddingBottom: 32 },
-  detailTitle: { fontFamily: F.sign, fontSize: 44, lineHeight: 48, color: C.ink, letterSpacing: -0.5, marginTop: 8, marginBottom: 16 },
+  detailTitle: { fontFamily: F.sign, fontSize: 44, lineHeight: 48, color: C.ink, letterSpacing: -0.5, paddingRight: 8 },
   detailStatus: { fontFamily: F.text, fontSize: 15, color: C.slate, marginTop: 10, marginBottom: 22 },
   groupTitle: { fontFamily: F.signMedium, fontSize: 18, color: C.slate, marginBottom: 8 },
 
-  itemRow: { flexDirection: 'row', alignItems: 'center', minHeight: 52 },
-  itemMain: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingVertical: 12 },
-  box: { width: 24, height: 24, borderRadius: 3, borderWidth: 2, borderColor: C.ink, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+  itemRow: { flexDirection: 'row', alignItems: 'center', minHeight: 54 },
+  boxHit: { paddingVertical: 12, paddingRight: 14 },
+  itemTextWrap: { flex: 1, paddingVertical: 14 },
+  itemTextHeld: { opacity: 0.45 },
+  box: { width: 28, height: 28, borderRadius: 4, borderWidth: 2, borderColor: C.ink, alignItems: 'center', justifyContent: 'center' },
   boxPacked: { backgroundColor: C.strap, borderColor: C.strap },
   boxCheck: { color: C.ink, fontSize: 15, fontWeight: '800', marginTop: -1 },
   itemText: { flex: 1, fontFamily: F.text, fontSize: 17, lineHeight: 23, color: C.ink },
   itemTextPacked: { color: C.slate, textDecorationLine: 'line-through' },
-  removeItem: { paddingLeft: 12, paddingVertical: 8 },
-  removeItemText: { fontSize: 22, color: C.hairline },
+  hint: { fontFamily: F.text, fontSize: 13, color: C.slate, marginTop: 4, marginBottom: 12 },
+  titleBlock: { marginTop: 8, marginBottom: 16 },
+  detailTitleStamped: { paddingRight: 132 },
+  stamp: { position: 'absolute', right: 0, top: 4, borderWidth: 3, borderColor: C.ink, borderRadius: 4, paddingHorizontal: 10, paddingVertical: 2, backgroundColor: C.strap },
+  stampText: { fontFamily: F.sign, fontSize: 24, letterSpacing: 2, color: C.ink },
+  toast: { position: 'absolute', left: 20, right: 20, bottom: 82, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.ink, borderRadius: 6, paddingHorizontal: 16, paddingVertical: 14 },
+  toastText: { flex: 1, fontFamily: F.text, fontSize: 15, color: C.sheet, marginRight: 12 },
+  toastAction: { fontFamily: F.textMedium, fontSize: 15, color: C.strap },
   saveIssue: { fontFamily: F.text, fontSize: 14, color: C.danger, marginTop: 4 },
 
   addBar: { flexDirection: 'row', gap: 10, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 12, backgroundColor: C.fog, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.hairline },
