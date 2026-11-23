@@ -1,0 +1,40 @@
+# On every push to main: OTA update if a compatible preview build exists (same
+# native fingerprint), otherwise a new installable preview build.
+# This is how "update Packlight and send it to my iPhone" decides update vs rebuild.
+name: Ship to my iPhone (preview)
+on:
+  push:
+    branches: ['main']
+  workflow_dispatch: {}
+jobs:
+  fingerprint:
+    name: Fingerprint
+    type: fingerprint
+    environment: preview
+  get_ios_build:
+    name: Find compatible iOS preview build
+    needs: [fingerprint]
+    type: get-build
+    params:
+      fingerprint_hash: ${{ needs.fingerprint.outputs.ios_fingerprint_hash }}
+      profile: preview
+      platform: ios
+  build_ios:
+    name: New iOS preview build (native change)
+    needs: [get_ios_build]
+    if: ${{ !needs.get_ios_build.outputs.build_id }}
+    type: build
+    params:
+      platform: ios
+      profile: preview
+      refresh_ad_hoc_provisioning_profile: true
+  update_ios:
+    name: EAS Update to preview (JS-only change)
+    needs: [get_ios_build]
+    if: ${{ needs.get_ios_build.outputs.build_id }}
+    type: update
+    environment: preview
+    params:
+      channel: preview
+      platform: ios
+      message: ${{ github.commit_message || 'Preview update' }}

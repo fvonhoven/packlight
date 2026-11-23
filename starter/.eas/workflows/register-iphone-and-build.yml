@@ -1,0 +1,19 @@
+# One-time per device: pauses until you enroll the iPhone (open the link on the phone,
+# install the profile) and approve it on expo.dev, then builds a preview that includes it.
+# Needs an App Store Connect API key stored in Expo Services for the Apple team.
+# If the Expo account has 0 or 2+ Apple teams, add params.apple_team_identifier.
+name: Register iPhone and build preview
+on:
+  workflow_dispatch: {}
+jobs:
+  register_device:
+    name: Enroll and approve iPhone
+    type: apple-device-registration-request
+  build_ios:
+    name: Preview build incl. new device
+    needs: [register_device]
+    type: build
+    params:
+      platform: ios
+      profile: preview
+      refresh_ad_hoc_provisioning_profile: true

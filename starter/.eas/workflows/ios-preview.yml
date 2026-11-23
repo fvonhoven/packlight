@@ -1,0 +1,13 @@
+# Manual: a fresh, installable iOS preview build (ad hoc, signed for registered devices).
+# Run from Expo Services on iPhone (Workflows > Run), Expo MCP, or `eas workflow:run`.
+name: iOS preview build
+on:
+  workflow_dispatch: {}
+jobs:
+  build_ios:
+    name: Installable iOS preview
+    type: build
+    params:
+      platform: ios
+      profile: preview
+      refresh_ad_hoc_provisioning_profile: true

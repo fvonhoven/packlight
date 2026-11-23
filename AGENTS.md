@@ -1,11 +1,43 @@
-# Packlight: cloud-first Expo app
+# Packlight: agent instructions
 
-- Target Expo SDK 58 and React Native 0.88; follow official SDK 58 docs.
-- Install dependencies using `npm install`, then run `npm run typecheck` and `npm test`.
-- Use `npx --yes @expo/agent-cli@latest status` before choosing a development workflow.
-- The official Expo agent instructions can be set up with `npx --yes @expo/agent-cli@latest agents:setup`.
-- EAS workflows live in `.eas/workflows`. Do not submit a cloud build or start paid cloud simulators without user approval.
-- Preview builds: run `ios-preview.yml` with Expo Workflows or Expo MCP; physical-device registration uses `register-iphone-and-build.yml`.
-- Prefer EAS Update on the `preview` channel for JS-only changes after installing and configuring `expo-updates`; native changes require a new build.
-- Do not commit EXPO_TOKEN, Apple credentials, Expo project secrets or provisioning files.
-- If a tool is missing, follow `https://docs.expo.dev/agents/codex/` and `https://docs.expo.dev/mcp/`.
+Packlight is a local-first Expo packing list app (Expo SDK 58, React Native 0.88, TypeScript).
+The owner develops it entirely from an iPhone by chatting with Claude. Read
+`docs/PHONE-WORKFLOW.md` for the full workflow.
+
+## Ground rules
+- Don't rewrite the app. Make small, reviewable commits on `main` or a feature branch.
+- Local storage only (AsyncStorage). No auth or backend unless the owner asks.
+- Keep the UI minimal and mobile-first; reuse the palette `C` and patterns in `App.tsx`.
+- Preserve: saved lists, checklist items, progress, native Share, Import.
+- Pure logic belongs in `src/model.ts` with tests in `tests/model.test.js`.
+
+## Before every push
+1. `npm install`
+2. `npm run typecheck`
+3. `npm test`
+4. `npx expo install --check` and `npx --yes expo-doctor@latest`
+5. `npx expo export --platform ios --output-dir /tmp/export` (proves the JS bundle builds)
+
+Never report a build, update or install as done without checking its status (Expo MCP
+`build_info` / `workflow_info`, or the Expo Services app).
+
+## Shipping: update or new build?
+Pushing to `main` runs `.eas/workflows/ship-preview.yml`, which compares the native
+fingerprint with existing preview builds and picks for you:
+- **EAS Update** (no reinstall): changes to JS/TS, styles, copy, images bundled by Metro.
+- **New build** (reinstall from Expo Services): adding/upgrading a package with native
+  code, changing `app.json` native fields (bundle id, permissions, plugins, icon, splash),
+  Expo SDK upgrades.
+Tell the owner which one happened and, for a new build, give the install link.
+
+## Workflows (`.eas/workflows`)
+- `ship-preview.yml`: push to main, update vs rebuild (above).
+- `ios-preview.yml`: manual fresh signed preview build.
+- `register-iphone-and-build.yml`: enroll a new device, then build.
+- `simulator-build.yml`: unsigned simulator build for Expo cloud simulator testing.
+- `pr-checks.yml`: typecheck + tests on PRs.
+
+## Limits
+- Never commit or print EXPO_TOKEN, Apple credentials, .p8 keys or provisioning files.
+- Never submit to the App Store, publish to the `production` channel, or start paid cloud
+  simulators/sandboxes without the owner's explicit OK.
