@@ -28,5 +28,8 @@ Then in `app.json`:
 }
 ```
 
+Remove the `push:` trigger from `ship-preview.yml` until the first signed build exists
+(see docs/PHONE-WORKFLOW.md, Per-app setup, step 4), then restore it.
+
 Replace `APP_NAME` in `AGENTS.md`, add a `typecheck` and `test` script to `package.json`
 (`pr-checks.yml` runs both), push, connect the repo on expo.dev, run `ios-preview.yml`.

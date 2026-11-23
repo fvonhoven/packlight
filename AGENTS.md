@@ -37,6 +37,12 @@ Tell the owner which one happened and, for a new build, give the install link.
 - `simulator-build.yml`: unsigned simulator build for Expo cloud simulator testing.
 - `pr-checks.yml`: typecheck + tests on PRs.
 
+## Expo connector limits
+The Expo MCP connector is view/run only: `build_run`/`workflow_run` jobs that create
+builds or device registrations fail with "Failed to start job". Ship by pushing to
+`main` (GitHub app trigger) or ask the owner to tap Run on expo.dev. Use the connector
+for build_info/build_logs/workflow_info/workflow_logs to verify results.
+
 ## Limits
 - Never commit or print EXPO_TOKEN, Apple credentials, .p8 keys or provisioning files.
 - Never submit to the App Store, publish to the `production` channel, or start paid cloud

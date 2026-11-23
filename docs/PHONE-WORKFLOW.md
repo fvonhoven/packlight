@@ -27,14 +27,29 @@ build and update with Expo Services (EAS). No Mac or local terminal.
    expo.dev. Afterwards enable Settings > Privacy & Security > Developer Mode and restart
    when iOS asks.
 
-## Per-app setup (about 5 minutes, in Safari)
+## Per-app setup
 
-1. github.com/new: create an empty private repo (no README). Tell Claude the name.
+1. github.com/new: create an empty repo (no README). Pick **Private** if you want it private.
+   Then tell Claude the name; Claude attaches it and pushes.
 2. expo.dev > Projects > Create project with the same slug. Give Claude the Project ID.
-3. After Claude pushes: expo.dev > project > Project settings > GitHub > connect the repo.
-4. Claude runs the first iOS preview build. Install it from the Expo Services app.
+3. expo.dev > project > Project settings > GitHub > connect the repo.
+4. **First signed build (the one step that needs a terminal, once per app):** Expo will not
+   create a new app's certificate and ad hoc profile unattended. From any terminal:
+   `EXPO_NO_KEYCHAIN=1 npx eas-cli@latest build -p ios --profile preview`, sign in to
+   Apple, say yes to generating credentials, pick your iPhone. Every later build and
+   update runs from the cloud.
+5. Install the build from the Expo Services app.
 
-Claude handles the rest: `extra.eas.projectId`, `updates.url`, `eas.json`, workflows.
+### Things learned the hard way (Packlight, Nov 2026)
+- Claude's Expo connector has view/run access only. It can read builds, logs and
+  workflows, but Expo refuses builds it starts ("Entity Not Authorized ... CREATE").
+  Builds that matter are started by **pushes to main** (Expo's GitHub app has full
+  access) or by tapping **Run** on a workflow at expo.dev / in Expo Services.
+- Claude sessions can't create GitHub repos or Expo projects; those are steps 1 and 2.
+- Builds past the plan's included credits are billed pay-as-you-go. Keep automatic
+  rebuilds off until step 4 has succeeded, or every push burns a failing build.
+- If `eas` fails Apple login with "Received undefined", it's a stale Keychain password
+  or an old CLI: use `EXPO_NO_KEYCHAIN=1 npx eas-cli@latest`.
 
 ## Daily loop
 
