@@ -21,6 +21,15 @@
     },
     "runtimeVersion": {
       "policy": "fingerprint"
+    },
+    "owner": "fvonhoven",
+    "extra": {
+      "eas": {
+        "projectId": "8f259eea-5d66-4b52-a6be-5c0605307a74"
+      }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/8f259eea-5d66-4b52-a6be-5c0605307a74"
     }
   }
 }
