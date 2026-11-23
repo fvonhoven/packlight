@@ -1,0 +1,14 @@
+# One-time device enrollment; prompts for registration/approval in Expo dashboard.
+# Requires initial Expo project linkage, signing credentials and App Store Connect API key.
+# If Expo has several Apple teams, supply apple_team_identifier under params.
+name: Register iPhone and build preview
+jobs:
+  register_device:
+    type: apple-device-registration-request
+  build_ios:
+    needs: [register_device]
+    type: build
+    params:
+      platform: ios
+      profile: preview
+      refresh_ad_hoc_provisioning_profile: true

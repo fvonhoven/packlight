@@ -1,0 +1,25 @@
+{
+  "name": "packlight-expo",
+  "version": "1.0.0",
+  "private": true,
+  "main": "node_modules/expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc src/model.ts --target ES2020 --module commonjs --strict --skipLibCheck --outDir tests/.compiled && node --test tests/model.test.js"
+  },
+  "dependencies": {
+    "expo": "~58.0.0",
+    "expo-status-bar": "~58.0.5",
+    "react": "19.3.0",
+    "react-native": "0.88.1",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "react-native-safe-area-context": "~5.11.1"
+  },
+  "devDependencies": {
+    "@types/react": "~19.3.0",
+    "typescript": "~5.9.3"
+  }
+}

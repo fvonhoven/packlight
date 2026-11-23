@@ -1,0 +1,10 @@
+# Run manually from Expo Services (iPhone), EAS CLI or Expo MCP.
+# Requires initial Expo project linking and Apple signing setup.
+name: Build iOS preview for my phone
+jobs:
+  build_ios:
+    name: Installable iOS preview
+    type: build
+    params:
+      platform: ios
+      profile: preview
