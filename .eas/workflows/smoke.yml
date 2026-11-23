@@ -1,0 +1,11 @@
+# Diagnostic: proves Expo Workflows can start a job and check out this repo.
+name: Smoke test
+on:
+  workflow_dispatch: {}
+jobs:
+  smoke:
+    name: Checkout and hello
+    type: custom
+    steps:
+      - uses: eas/checkout
+      - run: ls && node -v && cat app.json
