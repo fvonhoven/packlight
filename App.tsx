@@ -13,6 +13,7 @@ import {
   Text,
   TextInput,
   View,
+  type TextInputInstance,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -106,7 +107,7 @@ function PackingApp() {
   const [dialogText, setDialogText] = useState('');
   const [itemText, setItemText] = useState('');
   const saves = useRef<Promise<unknown>>(Promise.resolve());
-  const addInputRef = useRef<TextInput>(null);
+  const addInputRef = useRef<TextInputInstance>(null);
 
   useEffect(() => {
     let alive = true;
