@@ -48,6 +48,11 @@ build and update with Expo Services (EAS). No Mac or local terminal.
 - Claude sessions can't create GitHub repos or Expo projects; those are steps 1 and 2.
 - Builds past the plan's included credits are billed pay-as-you-go. Keep automatic
   rebuilds off until step 4 has succeeded, or every push burns a failing build.
+- Builds only refresh the ad hoc profile in `register-iphone-and-build.yml`. That refresh
+  needs the App Store Connect key **assigned to the app** (expo.dev > project >
+  Credentials > iOS > App Store Connect API Key), not just stored on the account.
+  Without it the build fails with "No App Store Connect API Key found for ad-hoc
+  provisioning profile refresh".
 - If `eas` fails Apple login with "Received undefined", it's a stale Keychain password
   or an old CLI: use `EXPO_NO_KEYCHAIN=1 npx eas-cli@latest`.
 
